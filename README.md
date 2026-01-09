@@ -147,17 +147,48 @@ src/StudentProgressTracker/
 - ✅ Syntax highlighting pro kód (Prism.js)
 - ✅ Hlasové diktování (Web Speech API)
 
+## Deployment
+
+### Proč ne Vercel?
+Blazor Server vyžaduje **WebSocket** spojení a **persistentní server** (SignalR). Vercel podporuje pouze statické stránky a serverless funkce, proto není kompatibilní s touto aplikací.
+
+### Alternativy pro deployment:
+- **Azure App Service** (doporučeno pro .NET)
+- **Railway.app**
+- **Render.com**
+- **Fly.io**
+
+### Lokální spuštění pro demo:
+```bash
+cd src/StudentProgressTracker
+dotnet run --launch-profile https
+```
+Aplikace poběží na `https://localhost:7241`
+
 ## Poznámky k implementaci
 
-Tento prototyp byl vytvořen s pomocí AI (Claude Code). Celý projekt včetně:
-- Architektura a návrh
-- Všechny zdrojové kódy
-- Konfigurace a dokumentace
+**Rozdělení práce (~40% já / ~60% AI):**
 
-**Čas strávený tvorbou**: ~2 hodiny
+**Moje práce (40%):**
+- Definice požadavků a zadání
+- Výběr technologií
+- Gemini API integrace
+- Testování a validace
+- Finální úpravy a review
+- Konfigurace prostředí
+
+**AI asistence (60%):**
+- Návrh architektury podle mých požadavků
+- Implementace kódu
+- Databázový model a EF konfigurace
+- UI komponenty a styling
+- SignalR integrace
+- Dokumentace a komentáře
+
+**Čas strávený tvorbou**: ~5 hodin
 
 **AI systémy použité**:
-- Claude Code (Anthropic) - veškerý kód a dokumentace
+- Claude Code (Anthropic) via CLI
 
 ## Licence
 
