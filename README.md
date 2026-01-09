@@ -26,7 +26,7 @@ Real-time aplikace pro sledování pokroku studentů učitelem. Blazor Server ap
 
 ## Technologie
 
-- **Backend**: .NET 9, Blazor Server
+- **Backend**: .NET 10, Blazor Server
 - **Databáze**: SQL Server LocalDB + Entity Framework Core
 - **Real-time**: SignalR
 - **Autentizace**: ASP.NET Core Identity + Google OAuth
@@ -38,7 +38,7 @@ Real-time aplikace pro sledování pokroku studentů učitelem. Blazor Server ap
 
 ## Požadavky
 
-- .NET 9 SDK
+- .NET 10 SDK
 - SQL Server LocalDB (nebo jiná SQL Server instance)
 - Google OAuth credentials
 - Google Gemini API klíč
