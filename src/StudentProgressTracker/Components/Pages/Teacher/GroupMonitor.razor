@@ -1,0 +1,422 @@
+@page "/teacher/groups/{GroupId:guid}/monitor"
+@layout StudentProgressTracker.Components.Layout.EmptyLayout
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@implements IAsyncDisposable
+@inject IGroupService GroupService
+@inject IProgressService ProgressService
+@inject IChatService ChatService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div class="chat-fullscreen flex flex-col bg-gray-100">
+    <!-- Header -->
+    <div class="bg-white shadow-sm border-b px-3 sm:px-4 py-2 sm:py-3">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2 sm:space-x-4 min-w-0">
+                <a href="/teacher/groups/@GroupId" class="text-gray-500 hover:text-gray-700 p-1 touch-target flex-shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </a>
+                <div class="min-w-0">
+                    <h1 class="font-bold text-gray-900 text-sm sm:text-base truncate">@(_group?.Name ?? "Načítání...")</h1>
+                    <p class="text-xs sm:text-sm text-gray-500 hidden sm:block">Real-time monitor</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
+                <span class="text-xs sm:text-sm text-gray-500 hidden sm:inline">@_members.Count studentů</span>
+                <span class="text-xs text-gray-500 sm:hidden">@_members.Count</span>
+                @if (_helpRequests.Count > 0)
+                {
+                    <span class="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-orange-100 text-orange-800 animate-pulse">
+                        <span class="hidden sm:inline">@_helpRequests.Count potřebuje pomoc</span>
+                        <span class="sm:hidden">@_helpRequests.Count!</span>
+                    </span>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="flex-1 flex items-center justify-center">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+        </div>
+    }
+    else if (_group == null)
+    {
+        <div class="flex-1 flex items-center justify-center">
+            <div class="text-center">
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Skupina nenalezena</h3>
+                <a href="/teacher/dashboard" class="text-blue-600 hover:text-blue-700">Zpět na dashboard</a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Members list - hidden on mobile when member selected -->
+            <div class="@(_selectedMemberId.HasValue ? "hidden md:block" : "w-full") md:w-1/3 lg:w-1/4 bg-white border-r overflow-y-auto">
+                <div class="p-3 sm:p-4 border-b sticky top-0 bg-white z-10">
+                    <h2 class="font-medium text-gray-900 text-sm sm:text-base">Studenti (@_members.Count)</h2>
+                </div>
+
+                @if (_members.Count == 0)
+                {
+                    <div class="p-6 sm:p-8 text-center text-gray-500">
+                        <svg class="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <p class="text-sm sm:text-base">Čekám na studenty...</p>
+                        <p class="text-xs sm:text-sm mt-2">Kód: <span class="font-mono font-bold text-base sm:text-lg">@_group.JoinCode</span></p>
+                    </div>
+                }
+                else
+                {
+                    <div class="divide-y">
+                        @foreach (var member in _members.OrderByDescending(m => m.NeedsHelp).ThenBy(m => m.Nickname))
+                        {
+                            var isSelected = _selectedMemberId == member.Id;
+                            var completedCount = member.Progresses.Count(p => p.IsCompleted);
+                            var totalGoals = _group.Goals.Count;
+
+                            <div @onclick="() => SelectMember(member.Id)"
+                                 class="p-3 sm:p-4 cursor-pointer hover:bg-gray-50 active:bg-gray-100 @(isSelected ? "bg-blue-50 border-l-4 border-blue-500" : "") @(member.NeedsHelp ? "bg-orange-50" : "")">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="font-medium text-gray-900 text-sm sm:text-base">@member.Nickname</span>
+                                    @if (member.NeedsHelp)
+                                    {
+                                        <button @onclick:stopPropagation="true" @onclick="() => ResolveHelp(member.Id)"
+                                                class="text-xs bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white px-2 py-1 rounded touch-target">
+                                            Vyřešit
+                                        </button>
+                                    }
+                                </div>
+
+                                <!-- Progress overview -->
+                                <div class="space-y-1">
+                                    @foreach (var goal in _group.Goals.OrderBy(g => g.Order))
+                                    {
+                                        var progress = member.Progresses.FirstOrDefault(p => p.GoalId == goal.Id);
+                                        <div class="flex items-center space-x-2">
+                                            @if (goal.Type == GoalType.Boolean)
+                                            {
+                                                @if (progress?.IsCompleted == true)
+                                                {
+                                                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                                    </svg>
+                                                }
+                                                else
+                                                {
+                                                    <div class="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border-2 border-gray-300 flex-shrink-0"></div>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <div class="w-12 sm:w-16 h-1.5 sm:h-2 bg-gray-200 rounded-full flex-shrink-0">
+                                                    <div class="h-full bg-blue-500 rounded-full" style="width: @(progress?.PercentageComplete ?? 0)%"></div>
+                                                </div>
+                                            }
+                                            <span class="text-xs text-gray-500 truncate flex-1">@goal.Title</span>
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="mt-2 text-xs text-gray-400">
+                                    @completedCount/@totalGoals splněno
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Detail panel - full width on mobile when selected -->
+            <div class="@(_selectedMemberId.HasValue ? "w-full" : "hidden") md:flex md:flex-1 flex-col overflow-hidden">
+                @if (_selectedMember != null)
+                {
+                    <!-- Member header with back button on mobile -->
+                    <div class="bg-white border-b p-3 sm:p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <button @onclick="DeselectMember" class="md:hidden p-1 text-gray-500 hover:text-gray-700 touch-target">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                </button>
+                                <div>
+                                    <h2 class="text-base sm:text-lg font-medium text-gray-900">@_selectedMember.Nickname</h2>
+                                    <p class="text-xs sm:text-sm text-gray-500">Připojeno @_selectedMember.JoinedAt.ToLocalTime().ToString("H:mm")</p>
+                                </div>
+                            </div>
+                            @if (_selectedMember.NeedsHelp)
+                            {
+                                <span class="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium bg-orange-100 text-orange-800 max-w-32 sm:max-w-none truncate">
+                                    <span class="hidden sm:inline">Potřebuje pomoc: </span>@_selectedMember.HelpReason
+                                </span>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Messages -->
+                    <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 bg-gray-50">
+                        @if (_memberMessages.Count == 0)
+                        {
+                            <p class="text-center text-gray-500 py-6 sm:py-8 text-sm sm:text-base">Zatím žádné zprávy</p>
+                        }
+                        else
+                        {
+                            @foreach (var msg in _memberMessages)
+                            {
+                                <div class="@(msg.IsRelevantToGoal ? "border-l-4 border-green-500 pl-2 sm:pl-3" : "") @(msg.IsWarning ? "border-l-4 border-orange-500 pl-2 sm:pl-3" : "")">
+                                    <div class="bg-white rounded-lg p-2.5 sm:p-3 shadow-sm @(msg.Type == MessageType.AI ? "bg-blue-50" : "") @(msg.Type == MessageType.System ? "bg-gray-100" : "")">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="text-xs font-medium @(msg.Type == MessageType.AI ? "text-blue-600" : "text-gray-500")">
+                                                @(msg.Type == MessageType.AI ? "AI" : (msg.Type == MessageType.System ? "Systém" : _selectedMember.Nickname))
+                                            </span>
+                                            <span class="text-xs text-gray-400">@msg.Timestamp.ToLocalTime().ToString("H:mm")</span>
+                                        </div>
+                                        <div class="text-gray-800 prose prose-sm max-w-none text-sm">
+                                            @((MarkupString)FormatMessage(msg.Content))
+                                        </div>
+                                        @if (msg.IsRelevantToGoal && msg.ProgressContribution.HasValue)
+                                        {
+                                            <div class="mt-1.5 sm:mt-2 text-xs text-green-600">
+                                                ✓ +@msg.ProgressContribution%
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="hidden md:flex flex-1 items-center justify-center text-gray-500">
+                        <div class="text-center">
+                            <svg class="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            <p class="text-sm sm:text-base">Vyberte studenta pro zobrazení detailu</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid GroupId { get; set; }
+
+    private Group? _group;
+    private List<GroupMember> _members = new();
+    private List<HelpRequest> _helpRequests = new();
+    private Guid? _selectedMemberId;
+    private GroupMember? _selectedMember;
+    private List<ChatMessage> _memberMessages = new();
+    private bool _loading = true;
+    private Microsoft.AspNetCore.SignalR.Client.HubConnection? _hubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        await SetupSignalR();
+    }
+
+    private async Task LoadData()
+    {
+        _group = await GroupService.GetGroupAsync(GroupId);
+        if (_group != null)
+        {
+            _members = await GroupService.GetGroupMembersAsync(GroupId);
+            _helpRequests = await ProgressService.GetActiveHelpRequestsAsync(GroupId);
+        }
+        _loading = false;
+    }
+
+    private async Task SetupSignalR()
+    {
+        _hubConnection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/progress"), options =>
+            {
+                // Accept self-signed certificates in development
+                options.HttpMessageHandlerFactory = (handler) =>
+                {
+                    if (handler is HttpClientHandler clientHandler)
+                    {
+                        clientHandler.ServerCertificateCustomValidationCallback =
+                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+                    }
+                    return handler;
+                };
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<ChatMessageDto>("ReceiveMessage", async (message) =>
+        {
+            if (message.MemberId == _selectedMemberId)
+            {
+                _memberMessages.Add(new ChatMessage
+                {
+                    Id = message.Id,
+                    Content = message.Content,
+                    Type = message.Type,
+                    IsRelevantToGoal = message.IsRelevantToGoal,
+                    IsWarning = message.IsWarning,
+                    Timestamp = message.Timestamp
+                });
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        _hubConnection.On<ProgressUpdateDto>("ProgressUpdated", async (update) =>
+        {
+            var member = _members.FirstOrDefault(m => m.Id == update.MemberId);
+            if (member != null)
+            {
+                var progress = member.Progresses.FirstOrDefault(p => p.GoalId == update.GoalId);
+                if (progress != null)
+                {
+                    progress.CurrentValue = update.CurrentValue;
+                    progress.IsCompleted = update.IsCompleted;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        _hubConnection.On<MemberDto>("MemberJoined", async (member) =>
+        {
+            var existingMember = _members.FirstOrDefault(m => m.Id == member.Id);
+            if (existingMember == null)
+            {
+                var newMember = new GroupMember
+                {
+                    Id = member.Id,
+                    Nickname = member.Nickname,
+                    JoinedAt = member.JoinedAt,
+                    NeedsHelp = member.NeedsHelp,
+                    Progresses = member.Progresses.Select(p => new MemberProgress
+                    {
+                        GoalId = p.GoalId,
+                        CurrentValue = p.CurrentValue,
+                        IsCompleted = p.IsCompleted
+                    }).ToList()
+                };
+                _members.Add(newMember);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        _hubConnection.On<HelpRequestDto>("MemberNeedsHelp", async (request) =>
+        {
+            var member = _members.FirstOrDefault(m => m.Id == request.MemberId);
+            if (member != null)
+            {
+                member.NeedsHelp = true;
+                member.HelpReason = request.Reason;
+            }
+            _helpRequests.Add(new HelpRequest
+            {
+                Id = request.Id,
+                MemberId = request.MemberId,
+                Reason = request.Reason,
+                Type = request.Type,
+                CreatedAt = request.CreatedAt
+            });
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hubConnection.On<Guid>("HelpResolved", async (memberId) =>
+        {
+            var member = _members.FirstOrDefault(m => m.Id == memberId);
+            if (member != null)
+            {
+                member.NeedsHelp = false;
+                member.HelpReason = null;
+            }
+            _helpRequests.RemoveAll(r => r.MemberId == memberId);
+            await InvokeAsync(StateHasChanged);
+        });
+
+        await _hubConnection.StartAsync();
+        await _hubConnection.SendAsync("JoinTeacherDashboard", GroupId.ToString());
+    }
+
+    private async Task SelectMember(Guid memberId)
+    {
+        _selectedMemberId = memberId;
+        _selectedMember = _members.FirstOrDefault(m => m.Id == memberId);
+
+        if (_selectedMember != null)
+        {
+            _memberMessages = await ChatService.GetMessagesAsync(GroupId, memberId);
+        }
+    }
+
+    private void DeselectMember()
+    {
+        _selectedMemberId = null;
+        _selectedMember = null;
+        _memberMessages.Clear();
+    }
+
+    private async Task ResolveHelp(Guid memberId)
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst("UserId")?.Value;
+
+        // Fallback: get user by email if UserId claim is not present
+        if (string.IsNullOrEmpty(userId))
+        {
+            var email = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+            if (!string.IsNullOrEmpty(email))
+            {
+                var user = await GroupService.GetUserByEmailAsync(email);
+                userId = user?.Id;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            var request = _helpRequests.FirstOrDefault(r => r.MemberId == memberId);
+            if (request != null)
+            {
+                await ProgressService.ResolveHelpRequestAsync(request.Id, userId);
+
+                var member = _members.FirstOrDefault(m => m.Id == memberId);
+                if (member != null)
+                {
+                    member.NeedsHelp = false;
+                    member.HelpReason = null;
+                }
+                _helpRequests.RemoveAll(r => r.MemberId == memberId);
+            }
+        }
+    }
+
+    private string FormatMessage(string content)
+    {
+        // Basic HTML escaping and markdown-like formatting
+        content = System.Web.HttpUtility.HtmlEncode(content);
+        content = System.Text.RegularExpressions.Regex.Replace(content, @"\*\*(.*?)\*\*", "<strong>$1</strong>");
+        content = System.Text.RegularExpressions.Regex.Replace(content, @"\*(.*?)\*", "<em>$1</em>");
+        content = content.Replace("\n", "<br/>");
+        return content;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection != null)
+        {
+            await _hubConnection.SendAsync("LeaveTeacherDashboard", GroupId.ToString());
+            await _hubConnection.DisposeAsync();
+        }
+    }
+}

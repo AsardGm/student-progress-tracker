@@ -1,0 +1,599 @@
+@page "/student/chat/{GroupId:guid}"
+@layout StudentProgressTracker.Components.Layout.EmptyLayout
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject IGroupService GroupService
+@inject IChatService ChatService
+@inject IProgressService ProgressService
+@inject IAIService AIService
+@inject IProgressHubService HubService
+@inject IMarkdownService MarkdownService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IWebHostEnvironment Environment
+
+<div class="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    @if (_loading)
+    {
+        <div class="flex-1 flex items-center justify-center">
+            <div class="text-center">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center animate-pulse">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                    </svg>
+                </div>
+                <p class="text-slate-500">Načítám chat...</p>
+            </div>
+        </div>
+    }
+    else if (_group == null || _member == null)
+    {
+        <div class="flex-1 flex items-center justify-center">
+            <div class="text-center p-6 sm:p-8">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                    <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                </div>
+                <h2 class="text-lg sm:text-xl font-bold text-slate-800 mb-2">Přístup odepřen</h2>
+                <p class="text-slate-500 mb-6 text-sm sm:text-base">Nejprve se musíš připojit ke skupině.</p>
+                <a href="/join" class="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-xl font-medium transition-all shadow-md hover:shadow-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                    </svg>
+                    Připojit se
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="relative">
+                    <div class="w-10 h-10 rounded-full bg-white/20 flex-shrink-0 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                        </svg>
+                    </div>
+                    <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-indigo-600 rounded-full"></span>
+                </div>
+                <div class="min-w-0">
+                    <h3 class="font-semibold text-white truncate">AI Tutor</h3>
+                    <span class="text-xs text-indigo-200">gemini-2.0-flash</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-1">
+                <button @onclick="RequestHelp"
+                        class="p-2 rounded-lg transition-colors touch-target @(_member.NeedsHelp ? "bg-orange-500/20 text-orange-300" : "text-white/70 hover:text-orange-300 hover:bg-white/10")"
+                        title="@(_member.NeedsHelp ? "Pomoc vyžádána" : "Potřebuji pomoc")">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                </button>
+                <button @onclick="ToggleProgress" class="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors touch-target">
+                    <svg class="w-5 h-5 transition-transform @(_showProgress ? "rotate-180" : "")" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress panel -->
+        @if (_showProgress)
+        {
+            <div class="px-4 py-3 border-b border-slate-200 bg-slate-50">
+                <div class="space-y-2">
+                    @foreach (var goal in _group.Goals.OrderBy(g => g.Order))
+                    {
+                        var progress = _member.Progresses.FirstOrDefault(p => p.GoalId == goal.Id);
+                        var isCompleted = goal.Type == GoalType.Boolean ? progress?.IsCompleted == true : (progress?.PercentageComplete ?? 0) >= 100;
+
+                        <div class="flex items-center gap-3 p-2 rounded-lg @(isCompleted ? "bg-emerald-50" : "bg-white") border @(isCompleted ? "border-emerald-200" : "border-slate-200")">
+                            @if (goal.Type == GoalType.Boolean)
+                            {
+                                <div class="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center @(isCompleted ? "bg-emerald-500 text-white" : "border-2 border-slate-300")">
+                                    @if (isCompleted)
+                                    {
+                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                        </svg>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="w-10 flex-shrink-0">
+                                    <div class="text-xs font-bold text-center @(isCompleted ? "text-emerald-600" : "text-slate-600")">
+                                        @(progress?.PercentageComplete ?? 0)%
+                                    </div>
+                                    <div class="h-1.5 bg-slate-200 rounded-full mt-1">
+                                        <div class="h-full rounded-full transition-all duration-500 @(isCompleted ? "bg-emerald-500" : "bg-indigo-500")" style="width: @(progress?.PercentageComplete ?? 0)%"></div>
+                                    </div>
+                                </div>
+                            }
+                            <div class="flex-1 min-w-0">
+                                <span class="text-sm font-medium @(isCompleted ? "text-emerald-700" : "text-slate-700") truncate block">@goal.Title</span>
+                                @if (goal.Type == GoalType.Percentage)
+                                {
+                                    <span class="text-xs text-slate-500">@(progress?.CurrentValue ?? 0) / @goal.TargetValue</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Chat messages -->
+        <div @ref="_chatContainer" class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4 sm:space-y-6 scroll-smooth">
+            @foreach (var msg in _messages)
+            {
+                var isOwn = msg.MemberId == _member.Id && msg.Type == MessageType.User;
+                var isAI = msg.Type == MessageType.AI;
+                var isSystem = msg.Type == MessageType.System;
+
+                @if (isSystem)
+                {
+                    <!-- System message -->
+                    <div class="flex justify-center">
+                        <div class="bg-slate-100 text-slate-600 rounded-xl px-4 py-3 max-w-[90%] sm:max-w-[80%] text-sm border border-slate-200">
+                            <div class="prose prose-sm max-w-none prose-slate">
+                                @((MarkupString)FormatMessage(msg.Content))
+                            </div>
+                        </div>
+                    </div>
+                }
+                else if (isAI)
+                {
+                    <!-- AI message -->
+                    <div class="flex items-start gap-3 @(msg.IsRelevantToGoal ? "relative" : "")">
+                        @if (msg.IsRelevantToGoal)
+                        {
+                            <div class="absolute -left-1 top-0 bottom-0 w-1 bg-emerald-500 rounded-full"></div>
+                        }
+                        <div class="w-9 h-9 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center text-indigo-600">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                            </svg>
+                        </div>
+                        <div class="bg-slate-100 text-slate-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]">
+                            <div class="prose prose-sm max-w-none prose-slate leading-relaxed">
+                                @((MarkupString)FormatMessage(msg.Content))
+                            </div>
+                            <div class="flex items-center gap-2 mt-2 text-xs text-slate-400">
+                                <span>@msg.Timestamp.ToLocalTime().ToString("H:mm")</span>
+                                @if (msg.IsRelevantToGoal)
+                                {
+                                    <span class="text-emerald-500 flex items-center gap-1">
+                                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                        </svg>
+                                        Pokrok
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <!-- User message -->
+                    <div class="flex items-start gap-3 flex-row-reverse @(msg.IsWarning ? "relative" : "")">
+                        @if (msg.IsWarning)
+                        {
+                            <div class="absolute -right-1 top-0 bottom-0 w-1 bg-orange-500 rounded-full"></div>
+                        }
+                        <div class="w-9 h-9 rounded-full bg-indigo-600 flex-shrink-0 flex items-center justify-center text-white font-semibold text-sm">
+                            JA
+                        </div>
+                        <div class="bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%]">
+                            <div class="prose prose-sm max-w-none prose-invert leading-relaxed">
+                                @((MarkupString)FormatMessage(msg.Content))
+                            </div>
+                            <div class="flex items-center gap-2 mt-2 text-xs text-indigo-200 justify-end">
+                                <span>@msg.Timestamp.ToLocalTime().ToString("H:mm")</span>
+                                @if (msg.IsRelevantToGoal)
+                                {
+                                    <svg class="w-3 h-3 text-emerald-300" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                    </svg>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (_aiTyping)
+            {
+                <div class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-full bg-indigo-100 flex-shrink-0 flex items-center justify-center text-indigo-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                        </svg>
+                    </div>
+                    <div class="bg-slate-100 rounded-2xl rounded-tl-sm px-4 py-3">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></span>
+                            <span class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay: 0.1s"></span>
+                            <span class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Input area -->
+        <div class="bg-white border-t border-slate-100 p-4">
+            <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-full px-4 py-2 focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-400 transition-all">
+                <button @onclick="ToggleVoiceInput"
+                        class="p-1.5 rounded-full transition-colors flex-shrink-0 @(_isRecording ? "bg-red-500 text-white" : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50")"
+                        title="Diktovat">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                    </svg>
+                </button>
+
+                <input type="text" @bind="_newMessage" @bind:event="oninput" @onkeypress="HandleKeyPress"
+                       placeholder="Napiš zprávu..."
+                       class="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-slate-700 placeholder-slate-400 text-sm" />
+
+                <button @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(_newMessage) || _sending)"
+                        class="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public Guid GroupId { get; set; }
+
+    private Group? _group;
+    private GroupMember? _member;
+    private List<ChatMessage> _messages = new();
+    private string _newMessage = "";
+    private string _deviceId = "";
+    private bool _loading = true;
+    private bool _sending;
+    private bool _aiTyping;
+    private bool _isRecording;
+    private bool _showProgress;
+    private ElementReference _chatContainer;
+    private Microsoft.AspNetCore.SignalR.Client.HubConnection? _hubConnection;
+    private bool _initialized;
+
+    private void ToggleProgress() => _showProgress = !_showProgress;
+
+    private async Task RequestHelp()
+    {
+        if (_member == null) return;
+
+        if (_member.NeedsHelp)
+        {
+            // Cancel help request
+            await ProgressService.SetNeedsHelpAsync(_member.Id, false);
+            _member.NeedsHelp = false;
+            _member.HelpReason = null;
+
+            var cancelMsg = await ChatService.SendSystemMessageAsync(GroupId, "Zrušil jsi žádost o pomoc.");
+            _messages.Add(cancelMsg);
+        }
+        else
+        {
+            // Request help
+            await ProgressService.SetNeedsHelpAsync(_member.Id, true, "Student požádal o pomoc");
+            await ProgressService.CreateHelpRequestAsync(_member.Id, "Student požádal o pomoc", HelpRequestType.Manual);
+            _member.NeedsHelp = true;
+            _member.HelpReason = "Student požádal o pomoc";
+
+            await HubService.NotifyHelpRequested(GroupId, _member.Id, "Student požádal o pomoc");
+
+            var helpMsg = await ChatService.SendSystemMessageAsync(GroupId, "Požádal jsi učitele o pomoc. Brzy se ti ozve!");
+            _messages.Add(helpMsg);
+        }
+
+        await InvokeAsync(StateHasChanged);
+        await ScrollToBottom();
+    }
+
+    private string GetInitials(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{parts[0][0]}{parts[1][0]}".ToUpper();
+        return name.Length >= 2 ? name[..2].ToUpper() : name.ToUpper();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_initialized)
+        {
+            _initialized = true;
+            _deviceId = await JS.InvokeAsync<string>("getOrCreateDeviceId");
+
+            _group = await GroupService.GetGroupAsync(GroupId);
+            if (_group != null)
+            {
+                _member = await GroupService.GetMemberByDeviceIdAsync(GroupId, _deviceId);
+
+                if (_member != null)
+                {
+                    _messages = await ChatService.GetMessagesAsync(GroupId, _member.Id);
+
+                    if (_messages.Count == 0)
+                    {
+                        var welcomeMessage = await AIService.GenerateWelcomeMessageAsync(_group);
+                        var systemMsg = await ChatService.SendSystemMessageAsync(GroupId, welcomeMessage);
+                        _messages.Add(systemMsg);
+                    }
+
+                    await SetupSignalR();
+                }
+            }
+
+            _loading = false;
+            StateHasChanged();
+        }
+
+        await ScrollToBottom();
+    }
+
+    private async Task SetupSignalR()
+    {
+        _hubConnection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/progress"), options =>
+            {
+                // Allow self-signed certificates in development
+                if (Environment.IsDevelopment())
+                {
+                    options.HttpMessageHandlerFactory = handler =>
+                    {
+                        if (handler is HttpClientHandler clientHandler)
+                        {
+                            clientHandler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+                        }
+                        return handler;
+                    };
+                }
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<ProgressUpdateDto>("ProgressUpdated", async (update) =>
+        {
+            if (update.MemberId == _member?.Id)
+            {
+                var progress = _member?.Progresses.FirstOrDefault(p => p.GoalId == update.GoalId);
+                if (progress != null)
+                {
+                    progress.CurrentValue = update.CurrentValue;
+                    progress.IsCompleted = update.IsCompleted;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        });
+
+        await _hubConnection.StartAsync();
+        await _hubConnection.SendAsync("JoinGroup", GroupId.ToString());
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_newMessage) || _member == null || _group == null) return;
+
+        _sending = true;
+        var messageContent = _newMessage;
+        _newMessage = "";
+
+        try
+        {
+            var userMessage = await ChatService.SendMessageAsync(GroupId, _member.Id, messageContent);
+            _messages.Add(userMessage);
+
+            await ProgressService.UpdateLastActiveAsync(_member.Id);
+            await HubService.NotifyMessageSent(GroupId, userMessage);
+
+            await InvokeAsync(StateHasChanged);
+            await ScrollToBottom();
+
+            _aiTyping = true;
+            await InvokeAsync(StateHasChanged);
+
+            var analysis = await AIService.AnalyzeMessageAsync(
+                messageContent,
+                _group.Goals.ToList(),
+                _messages.TakeLast(10).ToList()
+            );
+
+            await ChatService.UpdateMessageAnalysisAsync(userMessage.Id, analysis);
+            userMessage.AIAnalysis = analysis;
+            userMessage.IsRelevantToGoal = analysis.IsRelevant;
+            userMessage.IsWarning = analysis.IsOffTopic;
+
+            if (analysis.IsRelevant && !string.IsNullOrEmpty(analysis.RelevantGoalId) && Guid.TryParse(analysis.RelevantGoalId, out var goalId))
+            {
+                var goal = _group.Goals.FirstOrDefault(g => g.Id == goalId);
+                if (goal != null)
+                {
+                    if (goal.Type == GoalType.Boolean)
+                    {
+                        await ProgressService.SetCompletedAsync(_member.Id, goalId, true);
+                    }
+                    else if (analysis.SuggestedProgress.HasValue && analysis.SuggestedProgress.Value > 0)
+                    {
+                        await ProgressService.IncrementProgressAsync(_member.Id, goalId, 1);
+                    }
+
+                    var updatedProgress = await ProgressService.GetMemberProgressesAsync(_member.Id);
+                    _member.Progresses = updatedProgress;
+
+                    var progress = _member.Progresses.FirstOrDefault(p => p.GoalId == goalId);
+                    if (progress != null)
+                    {
+                        progress.Goal = goal;
+                        await HubService.NotifyProgressUpdated(GroupId, _member, progress);
+                    }
+                }
+            }
+
+            if (analysis.IsOffTopic)
+            {
+                userMessage.IsWarning = true;
+            }
+
+            // Auto-detect if student needs help
+            if (analysis.NeedsHelp && !_member.NeedsHelp)
+            {
+                await ProgressService.SetNeedsHelpAsync(_member.Id, true, analysis.HelpReason ?? "AI detekovala potíže");
+                await ProgressService.CreateHelpRequestAsync(_member.Id, analysis.HelpReason ?? "AI detekovala potíže", HelpRequestType.AIDetected);
+                _member.NeedsHelp = true;
+                _member.HelpReason = analysis.HelpReason;
+                await HubService.NotifyHelpRequested(GroupId, _member.Id, analysis.HelpReason ?? "AI detekovala potíže");
+            }
+
+            var progresses = await ProgressService.GetMemberProgressesAsync(_member.Id);
+            var aiResponse = await AIService.GenerateResponseAsync(
+                messageContent,
+                _group.Goals.ToList(),
+                progresses,
+                _messages.TakeLast(10).ToList()
+            );
+
+            _aiTyping = false;
+
+            var aiMessage = await ChatService.SendAIMessageAsync(GroupId, _member.Id, aiResponse);
+            _messages.Add(aiMessage);
+
+            await HubService.NotifyMessageSent(GroupId, aiMessage);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending message: {ex.Message}");
+            var errorMsg = new ChatMessage
+            {
+                GroupId = GroupId,
+                Content = "Omlouvám se, zprávu se nepodařilo odeslat. Zkus to prosím znovu.",
+                Type = MessageType.System,
+                Timestamp = DateTime.UtcNow
+            };
+            _messages.Add(errorMsg);
+        }
+        finally
+        {
+            _sending = false;
+            _aiTyping = false;
+            await InvokeAsync(StateHasChanged);
+            await ScrollToBottom();
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task ToggleVoiceInput()
+    {
+        if (_isRecording)
+        {
+            _isRecording = false;
+            var result = await JS.InvokeAsync<string>("stopVoiceRecognition");
+            if (!string.IsNullOrEmpty(result))
+            {
+                _newMessage = result;
+            }
+        }
+        else
+        {
+            _isRecording = true;
+            await JS.InvokeVoidAsync("startVoiceRecognition");
+        }
+    }
+
+    private string FormatMessage(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return string.Empty;
+
+        // Preserve LaTeX math before markdown processing
+        var mathBlocks = new List<string>();
+        var mathInline = new List<string>();
+
+        // Extract block math $$...$$
+        content = System.Text.RegularExpressions.Regex.Replace(content, @"\$\$([\s\S]*?)\$\$", m =>
+        {
+            mathBlocks.Add(m.Groups[1].Value);
+            return $"{{{{MATHBLOCK{mathBlocks.Count - 1}}}}}";
+        });
+
+        // Extract inline math $...$
+        content = System.Text.RegularExpressions.Regex.Replace(content, @"\$([^\$\n]+?)\$", m =>
+        {
+            mathInline.Add(m.Groups[1].Value);
+            return $"{{{{MATHINLINE{mathInline.Count - 1}}}}}";
+        });
+
+        // Process markdown with Markdig
+        var html = MarkdownService.ToHtml(content);
+
+        // Restore block math with styling
+        for (int i = 0; i < mathBlocks.Count; i++)
+        {
+            html = html.Replace($"{{{{MATHBLOCK{i}}}}}",
+                $"<div class=\"bg-slate-100 border border-slate-200 rounded-lg p-3 my-2 font-mono text-sm text-slate-800 overflow-x-auto\">$${System.Web.HttpUtility.HtmlEncode(mathBlocks[i])}$$</div>");
+        }
+
+        // Restore inline math with styling
+        for (int i = 0; i < mathInline.Count; i++)
+        {
+            html = html.Replace($"{{{{MATHINLINE{i}}}}}",
+                $"<span class=\"font-mono bg-slate-100 px-1 rounded text-slate-800\">${System.Web.HttpUtility.HtmlEncode(mathInline[i])}$</span>");
+        }
+
+        return html;
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("scrollToBottom", _chatContainer);
+        }
+        catch { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection != null)
+        {
+            try
+            {
+                if (_hubConnection.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected)
+                {
+                    await _hubConnection.SendAsync("LeaveGroup", GroupId.ToString());
+                }
+            }
+            catch
+            {
+                // Connection may already be closed
+            }
+            finally
+            {
+                await _hubConnection.DisposeAsync();
+            }
+        }
+    }
+}

@@ -1,0 +1,197 @@
+@page "/teacher/groups/{GroupId:guid}"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IGroupService GroupService
+@inject NavigationManager Navigation
+
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="/teacher/dashboard" class="text-blue-600 hover:text-blue-700 text-sm flex items-center mb-4">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Zpět na dashboard
+        </a>
+
+        @if (_group != null)
+        {
+            <div class="flex justify-between items-start">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">@_group.Name</h1>
+                    <p class="text-gray-600 mt-1">@_group.Description</p>
+                </div>
+                <a href="/teacher/groups/@GroupId/monitor" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium inline-flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Sledovat živě
+                </a>
+            </div>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <div class="flex justify-center py-12">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+        </div>
+    }
+    else if (_group == null)
+    {
+        <div class="bg-white rounded-xl shadow-sm border p-12 text-center">
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Skupina nenalezena</h3>
+            <a href="/teacher/dashboard" class="text-blue-600 hover:text-blue-700">Zpět na dashboard</a>
+        </div>
+    }
+    else
+    {
+        <div class="grid md:grid-cols-2 gap-6">
+            <!-- QR Code -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">QR kód pro připojení</h2>
+                <div class="flex flex-col items-center">
+                    @if (!string.IsNullOrEmpty(_group.QRCodeBase64))
+                    {
+                        <img src="@_group.QRCodeBase64" alt="QR Code" class="w-48 h-48 mb-4" />
+                    }
+                    <div class="text-center">
+                        <p class="text-sm text-gray-500 mb-1">nebo použijte kód:</p>
+                        <p class="text-2xl font-mono font-bold text-blue-600">@_group.JoinCode</p>
+                    </div>
+                    <div class="mt-4 text-sm text-gray-500">
+                        <p>URL: <code class="bg-gray-100 px-2 py-1 rounded">@(Navigation.BaseUri.TrimEnd('/') + "/join/" + _group.JoinCode)</code></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Goals -->
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Cíle (@_group.Goals.Count)</h2>
+                <div class="space-y-3">
+                    @foreach (var goal in _group.Goals.OrderBy(g => g.Order))
+                    {
+                        var completedCount = _group.Members.Count(m => m.Progresses.Any(p => p.GoalId == goal.Id && p.IsCompleted));
+                        var totalMembers = _group.Members.Count;
+                        var allCompleted = totalMembers > 0 && completedCount == totalMembers;
+
+                        <div class="flex items-start space-x-3 p-3 @(allCompleted ? "bg-green-50" : "bg-gray-50") rounded-lg">
+                            @if (goal.Type == GoalType.Boolean)
+                            {
+                                <div class="w-6 h-6 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center @(allCompleted ? "bg-green-500 text-white" : "border-2 border-gray-300")">
+                                    @if (allCompleted)
+                                    {
+                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                                        </svg>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="w-6 h-6 @(allCompleted ? "bg-green-500" : "bg-blue-100") rounded flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <span class="text-xs font-medium @(allCompleted ? "text-white" : "text-blue-600")">@goal.TargetValue</span>
+                                </div>
+                            }
+                            <div class="flex-1">
+                                <div class="flex items-center justify-between">
+                                    <p class="font-medium text-gray-900">@goal.Title</p>
+                                    @if (totalMembers > 0)
+                                    {
+                                        <span class="text-xs font-medium @(allCompleted ? "text-green-600" : "text-gray-500")">
+                                            @completedCount/@totalMembers splnilo
+                                        </span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(goal.Description))
+                                {
+                                    <p class="text-sm text-gray-500 mt-1">@goal.Description</p>
+                                }
+                                <p class="text-xs text-gray-400 mt-1">
+                                    @(goal.Type == GoalType.Boolean ? "Splněno / Nesplněno" : $"Progress bar (0-{goal.TargetValue})")
+                                </p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Members -->
+        <div class="mt-6 bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Studenti (@_group.Members.Count)</h2>
+            @if (_group.Members.Count == 0)
+            {
+                <p class="text-gray-500 text-center py-4">Zatím se nikdo nepřipojil.</p>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Přezdívka</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Připojeno</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Pokrok</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Stav</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            @foreach (var member in _group.Members.OrderBy(m => m.Nickname))
+                            {
+                                var completed = member.Progresses.Count(p => p.IsCompleted);
+                                var total = _group.Goals.Count;
+                                <tr>
+                                    <td class="px-4 py-3 font-medium text-gray-900">@member.Nickname</td>
+                                    <td class="px-4 py-3 text-sm text-gray-500">@member.JoinedAt.ToLocalTime().ToString("H:mm")</td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex items-center space-x-2">
+                                            <div class="w-24 h-2 bg-gray-200 rounded-full">
+                                                <div class="h-2 bg-green-500 rounded-full" style="width: @(total > 0 ? completed * 100 / total : 0)%"></div>
+                                            </div>
+                                            <span class="text-sm text-gray-500">@completed/@total</span>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        @if (member.NeedsHelp)
+                                        {
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                                Potřebuje pomoc
+                                            </span>
+                                        }
+                                        else if (completed == total)
+                                        {
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                Hotovo
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                Pracuje
+                                            </span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid GroupId { get; set; }
+
+    private Group? _group;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _group = await GroupService.GetGroupAsync(GroupId);
+        _loading = false;
+    }
+}

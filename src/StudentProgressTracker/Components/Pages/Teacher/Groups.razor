@@ -1,0 +1,127 @@
+@page "/teacher/groups"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IGroupService GroupService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Moje skupiny</h1>
+            <p class="text-gray-600">Správa všech vašich skupin</p>
+        </div>
+        <a href="/teacher/groups/create" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium inline-flex items-center">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Nová skupina
+        </a>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="flex justify-center py-12">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+        </div>
+    }
+    else if (_groups.Count == 0)
+    {
+        <div class="bg-white rounded-xl shadow-sm border p-12 text-center">
+            <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Zatím nemáte žádné skupiny</h3>
+            <p class="text-gray-600 mb-6">Vytvořte svou první skupinu a začněte sledovat pokrok studentů.</p>
+            <a href="/teacher/groups/create" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium">
+                Vytvořit skupinu
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            @foreach (var group in _groups)
+            {
+                var needsHelp = group.Members.Count(m => m.NeedsHelp);
+                <div class="bg-white rounded-xl shadow-sm border hover:shadow-md transition-shadow">
+                    <div class="p-6">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 class="text-lg font-medium text-gray-900">@group.Name</h3>
+                                <p class="text-sm text-gray-500 font-mono">@group.JoinCode</p>
+                            </div>
+                            @if (group.IsActive)
+                            {
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    Aktivní
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                    Ukončená
+                                </span>
+                            }
+                        </div>
+
+                        <p class="text-gray-600 text-sm mb-4 line-clamp-2">@group.Description</p>
+
+                        <div class="flex items-center justify-between text-sm text-gray-500 mb-4">
+                            <span>@group.Members.Count studentů</span>
+                            <span>@group.Goals.Count cílů</span>
+                        </div>
+
+                        @if (needsHelp > 0)
+                        {
+                            <div class="mb-4 bg-orange-50 text-orange-700 px-3 py-2 rounded-lg text-sm flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                </svg>
+                                @needsHelp student(ů) potřebuje pomoc
+                            </div>
+                        }
+
+                        <div class="flex space-x-2">
+                            <a href="/teacher/groups/@group.Id/monitor" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center py-2 rounded-lg text-sm font-medium">
+                                Sledovat
+                            </a>
+                            <a href="/teacher/groups/@group.Id" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-center py-2 rounded-lg text-sm font-medium">
+                                Detail
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Group> _groups = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst("UserId")?.Value;
+
+        // Fallback: get user by email if UserId claim is not present
+        if (string.IsNullOrEmpty(userId))
+        {
+            var email = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+            if (!string.IsNullOrEmpty(email))
+            {
+                var user = await GroupService.GetUserByEmailAsync(email);
+                userId = user?.Id;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _groups = await GroupService.GetGroupsByOwnerAsync(userId);
+        }
+
+        _loading = false;
+    }
+}

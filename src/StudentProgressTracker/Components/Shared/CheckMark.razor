@@ -1,0 +1,43 @@
+@* CheckMark component for boolean goals *@
+
+<div class="inline-flex items-center">
+    @if (IsCompleted)
+    {
+        <div class="w-@(Size) h-@(Size) rounded-full bg-green-100 flex items-center justify-center">
+            <svg class="w-@(Size - 1) h-@(Size - 1) text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+            </svg>
+        </div>
+        @if (ShowLabel)
+        {
+            <span class="ml-2 text-sm text-green-600 font-medium">Splněno</span>
+        }
+    }
+    else
+    {
+        <div class="w-@(Size) h-@(Size) rounded-full border-2 border-gray-300 flex items-center justify-center">
+            @if (ShowIcon)
+            {
+                <div class="w-2 h-2 rounded-full bg-gray-300"></div>
+            }
+        </div>
+        @if (ShowLabel)
+        {
+            <span class="ml-2 text-sm text-gray-500">Nesplněno</span>
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public bool IsCompleted { get; set; }
+
+    [Parameter]
+    public bool ShowLabel { get; set; } = false;
+
+    [Parameter]
+    public bool ShowIcon { get; set; } = false;
+
+    [Parameter]
+    public int Size { get; set; } = 6;
+}

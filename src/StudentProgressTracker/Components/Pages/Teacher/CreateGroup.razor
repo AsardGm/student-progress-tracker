@@ -1,0 +1,229 @@
+@page "/teacher/groups/create"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject IGroupService GroupService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject NotificationService NotificationService
+
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <a href="/teacher/dashboard" class="text-blue-600 hover:text-blue-700 text-sm flex items-center mb-4">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Zpět na dashboard
+        </a>
+        <h1 class="text-2xl font-bold text-gray-900">Vytvořit novou skupinu</h1>
+        <p class="text-gray-600">Zadejte název skupiny, popis cíle a definujte jednotlivé cíle pro studenty.</p>
+    </div>
+
+    <EditForm Model="_model" OnValidSubmit="HandleSubmit" class="space-y-6">
+        <DataAnnotationsValidator />
+
+        <!-- Group name -->
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Základní informace</h2>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Název skupiny *</label>
+                    <InputText @bind-Value="_model.Name" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="např. A2 - kvadratické rovnice 1" />
+                    <ValidationMessage For="@(() => _model.Name)" class="text-red-500 text-sm mt-1" />
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Popis cíle *</label>
+                    <InputTextArea @bind-Value="_model.Description" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="např. Vyřeší samostatně 3 různé kvadratické rovnice typu ax² + bx + c pomocí diskriminantu." />
+                    <ValidationMessage For="@(() => _model.Description)" class="text-red-500 text-sm mt-1" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Goals -->
+        <div class="bg-white rounded-xl shadow-sm border p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-medium text-gray-900">Cíle</h2>
+                <button type="button" @onclick="AddGoal" class="text-blue-600 hover:text-blue-700 text-sm font-medium inline-flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Přidat cíl
+                </button>
+            </div>
+
+            @if (_model.Goals.Count == 0)
+            {
+                <div class="text-center py-8 text-gray-500">
+                    <p>Zatím nemáte žádné cíle. Přidejte alespoň jeden cíl.</p>
+                </div>
+            }
+            else
+            {
+                <div class="space-y-4">
+                    @for (int i = 0; i < _model.Goals.Count; i++)
+                    {
+                        var index = i;
+                        var goal = _model.Goals[index];
+                        <div class="border rounded-lg p-4 bg-gray-50">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="text-sm font-medium text-gray-500">Cíl @(index + 1)</span>
+                                <button type="button" @onclick="() => RemoveGoal(index)" class="text-red-500 hover:text-red-700">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div class="md:col-span-2">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Název cíle</label>
+                                    <input type="text" @bind="goal.Title" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="např. Vyřeší 3 rovnice" />
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Typ cíle</label>
+                                    <select @bind="goal.Type" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="@GoalType.Boolean">Splněno / Nesplněno</option>
+                                        <option value="@GoalType.Percentage">Procenta (progress bar)</option>
+                                    </select>
+                                </div>
+
+                                @if (goal.Type == GoalType.Percentage)
+                                {
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Cílová hodnota</label>
+                                        <input type="number" @bind="goal.TargetValue" min="1" max="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                                        <p class="text-xs text-gray-500 mt-1">např. 3 pro "vyřeší 3 rovnice"</p>
+                                    </div>
+                                }
+
+                                <div class="md:col-span-2">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Popis (nepovinný)</label>
+                                    <input type="text" @bind="goal.Description" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Detailní popis cíle..." />
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Submit -->
+        <div class="flex justify-end space-x-4">
+            <a href="/teacher/dashboard" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                Zrušit
+            </a>
+            <button type="submit" disabled="@_submitting" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 inline-flex items-center">
+                @if (_submitting)
+                {
+                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                }
+                Vytvořit skupinu
+            </button>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    private CreateGroupModel _model = new();
+    private bool _submitting;
+
+    protected override void OnInitialized()
+    {
+        // Add one default goal
+        _model.Goals.Add(new GoalModel());
+    }
+
+    private void AddGoal()
+    {
+        _model.Goals.Add(new GoalModel());
+    }
+
+    private void RemoveGoal(int index)
+    {
+        if (_model.Goals.Count > 0)
+        {
+            _model.Goals.RemoveAt(index);
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (_model.Goals.Count == 0)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Chyba", "Přidejte alespoň jeden cíl.");
+            return;
+        }
+
+        _submitting = true;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst("UserId")?.Value;
+
+            // Fallback: get user by email if UserId claim is not present
+            if (string.IsNullOrEmpty(userId))
+            {
+                var email = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+                if (!string.IsNullOrEmpty(email))
+                {
+                    var user = await GroupService.GetUserByEmailAsync(email);
+                    userId = user?.Id;
+                }
+            }
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Chyba", "Nepodařilo se získat ID uživatele. Zkuste se znovu přihlásit.");
+                return;
+            }
+
+            var goals = _model.Goals.Select(g => new GoalDto
+            {
+                Title = g.Title,
+                Description = g.Description,
+                Type = g.Type,
+                TargetValue = g.Type == GoalType.Percentage ? g.TargetValue : 1
+            }).ToList();
+
+            var group = await GroupService.CreateGroupAsync(_model.Name, _model.Description, goals, userId);
+
+            NotificationService.Notify(NotificationSeverity.Success, "Úspěch", "Skupina byla vytvořena.");
+            Navigation.NavigateTo($"/teacher/groups/{group.Id}");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Chyba", ex.Message);
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private class CreateGroupModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Název je povinný")]
+        [System.ComponentModel.DataAnnotations.StringLength(200, ErrorMessage = "Název může mít max. 200 znaků")]
+        public string Name { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Popis je povinný")]
+        [System.ComponentModel.DataAnnotations.StringLength(2000, ErrorMessage = "Popis může mít max. 2000 znaků")]
+        public string Description { get; set; } = string.Empty;
+
+        public List<GoalModel> Goals { get; set; } = new();
+    }
+
+    private class GoalModel
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public GoalType Type { get; set; } = GoalType.Boolean;
+        public int TargetValue { get; set; } = 3;
+    }
+}

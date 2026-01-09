@@ -1,0 +1,40 @@
+@* Progress bar component for percentage goals *@
+
+<div class="flex items-center space-x-2">
+    <div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div class="h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full transition-all duration-500 ease-out"
+             style="width: @Percentage%">
+        </div>
+    </div>
+    @if (ShowLabel)
+    {
+        <span class="text-sm font-medium text-gray-600 min-w-[3rem] text-right">
+            @if (ShowValues)
+            {
+                <span>@CurrentValue/@TargetValue</span>
+            }
+            else
+            {
+                <span>@Percentage%</span>
+            }
+        </span>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int CurrentValue { get; set; }
+
+    [Parameter]
+    public int TargetValue { get; set; } = 1;
+
+    [Parameter]
+    public bool ShowLabel { get; set; } = true;
+
+    [Parameter]
+    public bool ShowValues { get; set; } = true;
+
+    private int Percentage => TargetValue > 0
+        ? (int)Math.Round((double)CurrentValue / TargetValue * 100)
+        : 0;
+}
