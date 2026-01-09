@@ -163,7 +163,7 @@ Blazor Server vyžaduje **WebSocket** spojení a **persistentní server** (Signa
 cd src/StudentProgressTracker
 dotnet run --launch-profile https
 ```
-Aplikace poběží na `https://localhost:7241`
+Aplikace poběží na `https://localhost:7001`
 
 ## Poznámky k implementaci
 
@@ -185,7 +185,7 @@ Aplikace poběží na `https://localhost:7241`
 - SignalR integrace
 - Dokumentace a komentáře
 
-**Čas strávený tvorbou**: ~5 hodin
+**Čas strávený tvorbou**: 3 hodin
 
 **AI systémy použité**:
 - Claude Code (Anthropic) via CLI
