@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using StudentProgressTracker.Components;
 using StudentProgressTracker.Configuration;
@@ -11,6 +12,17 @@ using StudentProgressTracker.Services;
 using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ========================================
+// FORWARDED HEADERS (pro Railway/proxy)
+// ========================================
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // ========================================
 // KONFIGURACE
@@ -144,6 +156,9 @@ var app = builder.Build();
 // ========================================
 // MIDDLEWARE PIPELINE
 // ========================================
+
+// Forwarded Headers musí být první - pro správné HTTPS za proxy (Railway)
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
